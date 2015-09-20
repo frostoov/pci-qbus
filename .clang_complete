@@ -1,2 +1,2 @@
--I/usr/lib/modules/4.1.6-1-ARCH/build/include/
+-I/usr/lib/modules/$(shell uname -r)/build/include/
 -std=gnu90
