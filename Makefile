@@ -2,21 +2,13 @@
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
 
-ifneq ($(KERNELRELEASE),)
-	obj-m := pci-qbus.o
-# Otherwise we were called directly from the command
-# line; invoke the kernel build system.
-else
-	KERNELDIR ?= /usr/lib/modules/$(shell uname -r)/build
-	PWD := $(shell pwd)
-default:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
-endif
+target ?= pci-qbus
+obj-m = $(target).o
 
-MODULEDIR = /usr/lib/modules/$(shell uname -r)/qbus
+all:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD)
 
-install: pci-qbus.ko
-	cp pci-qbus.ko $(MODULEDIR)/
-
+install: $(target).o
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules_install
 clean:
-	rm -f *.ko *~ core
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
