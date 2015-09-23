@@ -32,29 +32,29 @@ MODULE_DESCRIPTION("Character driver for IHEP PCI-QBUS interface cards");
 MODULE_VERSION(PCI_QBUS_VERSION);
 
 // global symbols
-static const int PCI_QBUS_VENDOR_ID = 0x1172;
-static const int PCI_QBUS_DEVICE_ID = 0x3;
+static const int pci_qbus_vendor_id = 0x1172;
+static const int pci_qbus_product_id = 0x3;
 
 
-const int  PCI_QBUS_IO_RANGE    = 32;
+const int  pci_qbus_io_port_range    = 32;
 
-const int  PCI_QBUS_STATUS_PORT = 0;
-const int  PCI_QBUS_VECTOR_PORT = 4;
-const int  PCI_QBUS_ADDR_PORT   = 8;
-const int  PCI_QBUS_DATA_PORT   = 12;
-const int  PCI_QBUS_ADDW_PORT   = 16;
+const int  pci_qbus_status_port = 0;
+const int  pci_qbus_vector_port = 4;
+const int  pci_qbus_addr_port   = 8;
+const int  pci_qbus_data_port   = 12;
+const int  pci_qbus_addw_port   = 16;
 
-const int  PCI_QBUS_REG5_PORT   = 20;
-const int  PCI_QBUS_REG6_PORT   = 24;
-const int  PCI_QBUS_REG7_PORT   = 28;
+const int  pci_qbus_reg5_port   = 20;
+const int  pci_qbus_reg6_port   = 24;
+const int  pci_qbus_reg7_port   = 28;
 
-const int PCI_QBUS_READY     = 1;
-const int PCI_QBUS_TIMEOUT   = 2;
-const int PCI_QBUS_INTERRUPT = 4;
+const int pci_qbus_status_ready     = 1;
+const int pci_qbus_status_timeout   = 2;
+const int pci_qbus_status_interrupt = 4;
 
 static int pci_qbus_major;
 static int pci_qbus_minor;
-static int io_port;
+static int pci_qbus_io_port;
 
 static struct cdev pci_qbus_cdev;
 static struct class* pci_qbus_device_class;
@@ -62,14 +62,9 @@ static struct device* pci_qbus_device;
 
 static const char* const pci_qbus_name = "pq";
 
-// interrupt service routine
-irqreturn_t pci_qbus_interrupt(int irq, void* dev_id) {
-    return IRQ_NONE; // nothing to be done, allow other handlers to run
-}
-
 // device open routine
 int pci_qbus_open(struct inode* inode, struct file* filp) {
-    if(io_port == 0)
+    if(pci_qbus_io_port == 0)
         return -1;
     else
         return 0;
@@ -90,12 +85,12 @@ loff_t pci_qbus_llseek(struct file* filp, loff_t offset, int whence) {
     }
     // SEEK_CUR - clear error status
     case SEEK_CUR: {
-        outw(0, io_port + PCI_QBUS_VECTOR_PORT);
+        outw(0, pci_qbus_io_port + pci_qbus_vector_port);
         break;
     }
     // SEEK_END - device+branch reset
     case SEEK_END: {
-        outw(0, io_port + PCI_QBUS_STATUS_PORT);
+        outw(0, pci_qbus_io_port + pci_qbus_status_port);
         break;
     }
     default:
@@ -109,17 +104,17 @@ ssize_t pci_qbus_read_word(struct file* filp, uint16_t* word, loff_t* offp) {
     static uint16_t data;
 
     // write addr to perform cycle
-    outw(filp->f_pos, io_port + PCI_QBUS_ADDR_PORT);
+    outw(filp->f_pos, pci_qbus_io_port + pci_qbus_addr_port);
     // wait for resonse
     do {
-        data = inw(io_port + PCI_QBUS_STATUS_PORT);
+        data = inw(pci_qbus_io_port + pci_qbus_status_port);
     } while(data == 0);
-    if(data == PCI_QBUS_READY) {
+    if(data == pci_qbus_status_ready) {
          // read data
-        *word = inw(io_port + PCI_QBUS_DATA_PORT);
+        *word = inw(pci_qbus_io_port + pci_qbus_data_port);
         return sizeof(uint16_t);
     } else {
-        outw(0, io_port + PCI_QBUS_VECTOR_PORT); // clear timeout status
+        outw(0, pci_qbus_io_port + pci_qbus_vector_port); // clear timeout status
         return 0;
     }
 }
@@ -144,15 +139,15 @@ ssize_t pci_qbus_read(struct file* filp, char* buf, size_t count, loff_t* offp) 
 ssize_t pci_qbus_write_word(struct file* filp, uint32_t word, loff_t* offp) {
     static uint16_t data;
 
-    outw(word, io_port + PCI_QBUS_DATA_PORT);         // set data word to write
-    outw(filp->f_pos, io_port + PCI_QBUS_ADDW_PORT); // write addr to perform cycle
+    outw(word, pci_qbus_io_port + pci_qbus_data_port);         // set data word to write
+    outw(filp->f_pos, pci_qbus_io_port + pci_qbus_addw_port); // write addr to perform cycle
     do {
-        data = inw(io_port + PCI_QBUS_STATUS_PORT);
+        data = inw(pci_qbus_io_port + pci_qbus_status_port);
     } while(data == 0);
-    if(data == PCI_QBUS_READY) {
+    if(data == pci_qbus_status_ready) {
         return sizeof(uint16_t);
     } else {
-        outw(0, io_port + PCI_QBUS_VECTOR_PORT); // clear timeout status
+        outw(0, pci_qbus_io_port + pci_qbus_vector_port); // clear timeout status
         return 0;
     }
 }
@@ -205,7 +200,7 @@ static int __init pci_qbus_init(void) {
     dev_t devno;
 
     printk(KERN_INFO "pci-qbus: v" PCI_QBUS_VERSION " by Solo\n");
-    io_port = 0;
+    pci_qbus_io_port = 0;
 
     err = alloc_chrdev_region(&devno, 0, 1, "pq");
     if(err != 0) {
@@ -238,19 +233,22 @@ static int __init pci_qbus_init(void) {
         return err;
     }
 
-    pci_dev = pci_get_device(PCI_QBUS_VENDOR_ID, PCI_QBUS_DEVICE_ID, pci_dev);
-    if(pci_dev != 0) {
-        err = pci_enable_device(pci_dev);
-        if(err != 0)
-            return err;
-        io_port = pci_resource_start(pci_dev, 0);
-        printk("pci-qbus: found card io=0x%x\n", io_port);
-        if(request_region(io_port, PCI_QBUS_IO_RANGE, pci_qbus_name) == NULL) {
-            printk(KERN_WARNING "pci-qbus: failed allocate PCI I/O port %d\n", io_port);
-            io_port = 0;
-        }
-    } else {
+    pci_dev = pci_get_device(pci_qbus_vendor_id, pci_qbus_product_id, NULL);
+    if(pci_dev == NULL) {
         printk(KERN_WARNING "pci_qbus: failed get pci device\n");
+        return -1;
+    }
+    err = pci_enable_device(pci_dev);
+    if(err != 0) {
+        printk(KERN_WARNING "pci_qbus: failed enable pci device\n");
+        return err;
+    }
+    pci_qbus_io_port = pci_resource_start(pci_dev, 0);
+    printk(KERN_INFO "pci-qbus: found card io=0x%x\n", pci_qbus_io_port);
+    if(request_region(pci_qbus_io_port, pci_qbus_io_port_range, pci_qbus_name) == NULL){
+        printk(KERN_WARNING "pci-qbus: failed allocate PCI I/O port %d\n", pci_qbus_io_port);
+        pci_qbus_io_port = 0;
+        return -1;
     }
 
     return 0;
@@ -259,8 +257,8 @@ static int __init pci_qbus_init(void) {
 static void __exit pci_qbus_exit(void) {
     int devno = MKDEV(pci_qbus_major, pci_qbus_minor);
     printk(KERN_INFO "pci-qbus: module unload\n");
-    if(io_port > 0)
-        release_region(io_port, PCI_QBUS_IO_RANGE);
+    if(pci_qbus_io_port > 0)
+        release_region(pci_qbus_io_port, pci_qbus_io_port_range);
     device_destroy(pci_qbus_device_class, devno);
     class_destroy(pci_qbus_device_class);
     unregister_chrdev_region(devno, 1);
