@@ -11,7 +11,7 @@
 */
 
 #include <linux/kernel.h>
-#include <linux/cdev.h>
+#include </usr/lib/modules/4.1.6-1-ARCH/build/include/linux/cdev.h>
 #include <linux/ioport.h>
 #include <linux/interrupt.h>
 #include <linux/fs.h>
@@ -75,6 +75,30 @@ int pci_qbus_release(struct inode* inode, struct file* filp) {
     return 0;
 }
 
+long pci_qbus_ioctl(struct file* filp, unsigned int cmd, unsigned long arg) {
+    #define CLEAR_ERROR  0
+    #define RESET_DEVICE 1
+    switch(cmd) {
+    //clear error status
+    case CLEAR_ERROR:
+    	printk(KERN_INFO "pci-qbus: CLEAR_ERROR\n");
+        outw(0, pci_qbus_io_port + pci_qbus_vector_port);
+        break;
+    //device+branch reset
+    case RESET_DEVICE:
+    	printk(KERN_INFO "pci-qbus: RESET_DEVICE\n");
+        outw(0, pci_qbus_io_port + pci_qbus_status_port);
+        break;
+    default:
+    	printk(KERN_INFO "pci-qbus: default\n");
+        return -EINVAL;
+    }
+    #undef CLEAR_ERROR
+    #undef RESET_DEVICE
+
+    return 0;
+}
+
 // address setup and cleanup
 loff_t pci_qbus_llseek(struct file* filp, loff_t offset, int whence) {
     switch(whence) {
@@ -83,24 +107,14 @@ loff_t pci_qbus_llseek(struct file* filp, loff_t offset, int whence) {
         filp->f_pos = offset;
         break;
     }
-    // SEEK_CUR - clear error status
-    case SEEK_CUR: {
-        outw(0, pci_qbus_io_port + pci_qbus_vector_port);
-        break;
-    }
-    // SEEK_END - device+branch reset
-    case SEEK_END: {
-        outw(0, pci_qbus_io_port + pci_qbus_status_port);
-        break;
-    }
     default:
-        break;
+        return -EINVAL;
     }
 
     return filp->f_pos;
 }
 
-ssize_t pci_qbus_read_word(struct file* filp, uint16_t* word, loff_t* offp) {
+static ssize_t pci_qbus_read_word(struct file* filp, uint16_t* word) {
     static uint16_t data;
 
     // write addr to perform cycle
@@ -115,7 +129,7 @@ ssize_t pci_qbus_read_word(struct file* filp, uint16_t* word, loff_t* offp) {
         return sizeof(uint16_t);
     } else {
         outw(0, pci_qbus_io_port + pci_qbus_vector_port); // clear timeout status
-        return 0;
+        return -EIO;
     }
 }
 
@@ -125,8 +139,9 @@ ssize_t pci_qbus_read(struct file* filp, char* buf, size_t count, loff_t* offp) 
     ssize_t ret;
     size_t c = 0;
     while(c < count) {
-        ret = pci_qbus_read_word(filp, &word, offp);
-        if(ret == 0) {
+        ret = pci_qbus_read_word(filp, &word);
+        if(ret <= 0) {
+            printk(KERN_WARNING "pci-qbus: failed read word\n");
             break;
         }
         copy_to_user(buf + c, &word, sizeof(word));
@@ -136,7 +151,7 @@ ssize_t pci_qbus_read(struct file* filp, char* buf, size_t count, loff_t* offp) 
     return c;
 }
 
-ssize_t pci_qbus_write_word(struct file* filp, uint32_t word, loff_t* offp) {
+static ssize_t pci_qbus_write_word(struct file* filp, uint32_t word) {
     static uint16_t data;
 
     outw(word, pci_qbus_io_port + pci_qbus_data_port);         // set data word to write
@@ -148,7 +163,7 @@ ssize_t pci_qbus_write_word(struct file* filp, uint32_t word, loff_t* offp) {
         return sizeof(uint16_t);
     } else {
         outw(0, pci_qbus_io_port + pci_qbus_vector_port); // clear timeout status
-        return 0;
+        return -EIO;
     }
 }
 
@@ -160,8 +175,9 @@ ssize_t pci_qbus_write(struct file* filp, const char* buf, size_t count, loff_t*
 
     while(c < count) {
         copy_from_user(&word, buf + c, sizeof(word));
-        ret = pci_qbus_write_word(filp, word, offp);
-        if(ret == 0) {
+        ret = pci_qbus_write_word(filp, word);
+        if(ret <= 0) {
+            printk(KERN_WARNING "pci-qbus: failed write word\n");
             break;
         }
         c += ret;
@@ -176,6 +192,7 @@ struct file_operations pci_qbus_fops = {
     .llseek = pci_qbus_llseek,
     .read = pci_qbus_read,
     .write = pci_qbus_write,
+    .unlocked_ioctl = pci_qbus_ioctl,
     .open = pci_qbus_open,
     .release = pci_qbus_release,
 };
