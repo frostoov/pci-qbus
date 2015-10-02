@@ -11,7 +11,7 @@
 */
 
 #include <linux/kernel.h>
-#include </usr/lib/modules/4.1.6-1-ARCH/build/include/linux/cdev.h>
+#include <linux/cdev.h>
 #include <linux/ioport.h>
 #include <linux/interrupt.h>
 #include <linux/fs.h>
